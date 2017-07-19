@@ -47,7 +47,7 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
 
 	}
 
-  is_initialized = True;
+	is_initialized = True;
 
 }
 
@@ -74,37 +74,50 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
 			new_y = particles[i].y + velocity/yaw_rate * ( cos(particles[i].theta) - cos(particles[i].theta + yaw_rate*delta_t) );
 			new_theta = particles[i].theta + yaw_rate*delta_t;
 		}
-		
+
 		normal_distribution<double> N_x(new_x, std_pos[0]);
-	    normal_distribution<double> N_y(new_y, std_pos[1]);
-	    normal_distribution<double> N_theta(new_theta, std_pos[2]);
+		normal_distribution<double> N_y(new_y, std_pos[1]);
+		normal_distribution<double> N_theta(new_theta, std_pos[2]);
 
-	    particles[i].x = N_x(gen);
-	    particles[i].y = N_y(gen);
-	    particles[i].theta = N_theta(gen);
+		particles[i].x = N_x(gen);
+		particles[i].y = N_y(gen);
+		particles[i].theta = N_theta(gen);
 
-	}
+	}  // end loop thru particles i
 
 }
 
 void ParticleFilter::dataAssociation(std::vector<LandmarkObs> predicted, std::vector<LandmarkObs>& observations) {
-	// TODOING: Find the predicted measurement that is closest to each observed measurement and assign the 
+	// TO_DID: Find the predicted measurement that is closest to each observed measurement and assign the 
 	//   observed measurement to this particular landmark.
 	// NOTE: this method will NOT be called by the grading code. But you will probably find it useful to 
 	//   implement this method and use it as a helper during the updateWeights phase.
-	for (int i=0; i<predicted.size(); ++i) {
+	
+	for (int i=0; i<observations.size(); ++i) {
 
-		for (int j=0; i<observations.size(); ++i) {
-			closest = predicted[i] - observations[j];
-		}
+		double closest_dist = sensor_range;
+		int association = 0;
 
-	}
+		for (int j=0; i<predicted.size(); ++i) {
+			double calc_dist = sqrt( pow(observations[i].x - predicted[j].x, 2) + pow(observations[i].y - predicted[j].y, 2) );
+
+			// check if closer than closest distance
+			if (calc_dist < closest_dist) {
+				closest_dist = calc_dist;
+				association = j;
+			}
+
+		}  // end loop thru predicted measurements j
+
+		observations[i].id = association; // assign closest landmark
+
+	}  // end loop thru observed measurements i
 
 }
 
 void ParticleFilter::updateWeights(double sensor_range, double std_landmark[], 
 		std::vector<LandmarkObs> observations, Map map_landmarks) {
-	// TODOING: Update the weights of each particle using a mult-variate Gaussian distribution. You can read
+	// TO_DID: Update the weights of each particle using a mult-variate Gaussian distribution. You can read
 	//   more about this distribution here: https://en.wikipedia.org/wiki/Multivariate_normal_distribution
 	// NOTE: The observations are given in the VEHICLE'S coordinate system. Your particles are located
 	//   according to the MAP'S coordinate system. You will need to transform between the two systems.
@@ -115,37 +128,61 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 	//   3.33
 	//   http://planning.cs.uiuc.edu/node99.html
 
-	vector<LandmarkObs> trans_observations;
+	for (int p=0; p<num_particles; ++p) {
 
-  for (int p=0; i<num_particles; ++i) {
+		vector<int> associations;
+		vector<double> sense_x;
+		vector<double> sense_y;
 
-  	trans_observations[i] = ;
+		vector<LandmarkObs> trans_observations;
+		LandmarkObs obs;
 
-    for  (int i=0; j<map_landmarks.size(); ++j) {
-      
-      association = dataAssociation(map_landmarks[i], trans_observations[i]);
+		// transform observations from vehicl to map
+		for (int t=0; t<observations.size(); ++t) {
+			obs = observations[t];
+			LandmarkObs trans_obs;
 
-		  if (association !=0) {
-			  double meas_x = trans_observations[i].x;
-			  double meas_y = trans_observations[i].y;
+			trans_obs.x = particles[p].x + (obs.x * cos(particles[p].theta) - obs.y * sin(particles[p].theta));
+			trans_obs.y = particles[p].y + (obs.x * sin(particles[p].theta) + obs.y * cos(particles[p].theta));
+			trans_observations.push_back(trans_obs);
+		}
 
-			  double mu_x = map_landmarks.landmark_list[association].x_f;
-			  double mu_y = map_landmarks.landmark_list[association].y_f;
+		particles[p].weight = 1.0;
 
-        double a = pow(meas_x-mu_x, 2) / (2 * pow(std_landmark[0], 2));
-	      double b = pow(meas_y-mu_y, 2) / (2 * pow(std_landmark[1], 2));
-			  long long multiplier = 1 / (2*M_PI * std_landmark[0]*std_landmark[1]) * exp(-(a+b));
+		// find closest landmarks from the map
+		dataAssociation(map_landmarks, trans_observations);
 
-			  if (multiplier>0) {
-			  	particles[p].weight *= multiplier;
-			  }
+		// loop through associations and calculate weights
+		for (int i=0; i<trans_observations.size(); ++i) {
+
+			int association = trans_observations[i].id;
+
+			if (association !=0) {
+				double meas_x = trans_observations[i].x;
+				double meas_y = trans_observations[i].y;
+
+				double mu_x = map_landmarks.landmark_list[association].x_f;
+				double mu_y = map_landmarks.landmark_list[association].y_f;
+
+				double a = pow(meas_x-mu_x, 2) / (2 * pow(std_landmark[0], 2));
+				double b = pow(meas_y-mu_y, 2) / (2 * pow(std_landmark[1], 2));
+				long long multiplier = 1 / (2*M_PI * std_landmark[0]*std_landmark[1]) * exp(-(a+b));
+
+				if (multiplier>0) {
+					particles[p].weight *= multiplier;
+				}
 			}
+
 			associations.push_back(association+1);
 			sense_x.push_back(trans_observations[i].x);
 			sense_y.push_back(trans_observations[i].y);
-    }
 
-  }
+		}  // end loop thru observations i
+
+		particles[p] = SetAssociations(particles[p], associations, sense_x, sense_y);
+		weights[p] = particles[p].weight;
+
+	}  // end loop thru particles p
 
 }
 
@@ -159,6 +196,7 @@ void ParticleFilter::resample() {
 
 	vector<Particle> resample_particles;
 
+	// loop thru particles and resample
 	for (int i=0; i < num_particles; ++i)	{
 		resample_particles.push_back(particles[distribution(gen)]);
 	}
@@ -180,36 +218,36 @@ Particle ParticleFilter::SetAssociations(Particle particle, std::vector<int> ass
 	particle.sense_y.clear();
 
 	particle.associations= associations;
- 	particle.sense_x = sense_x;
- 	particle.sense_y = sense_y;
+	particle.sense_x = sense_x;
+	particle.sense_y = sense_y;
 
- 	return particle;
+	return particle;
 }
 
 string ParticleFilter::getAssociations(Particle best)
 {
 	vector<int> v = best.associations;
 	stringstream ss;
-    copy( v.begin(), v.end(), ostream_iterator<int>(ss, " "));
-    string s = ss.str();
-    s = s.substr(0, s.length()-1);  // get rid of the trailing space
-    return s;
+	copy( v.begin(), v.end(), ostream_iterator<int>(ss, " "));
+	string s = ss.str();
+	s = s.substr(0, s.length()-1);  // get rid of the trailing space
+	return s;
 }
 string ParticleFilter::getSenseX(Particle best)
 {
 	vector<double> v = best.sense_x;
 	stringstream ss;
-    copy( v.begin(), v.end(), ostream_iterator<float>(ss, " "));
-    string s = ss.str();
-    s = s.substr(0, s.length()-1);  // get rid of the trailing space
-    return s;
+	copy( v.begin(), v.end(), ostream_iterator<float>(ss, " "));
+	string s = ss.str();
+	s = s.substr(0, s.length()-1);  // get rid of the trailing space
+	return s;
 }
 string ParticleFilter::getSenseY(Particle best)
 {
 	vector<double> v = best.sense_y;
 	stringstream ss;
-    copy( v.begin(), v.end(), ostream_iterator<float>(ss, " "));
-    string s = ss.str();
-    s = s.substr(0, s.length()-1);  // get rid of the trailing space
-    return s;
+	copy( v.begin(), v.end(), ostream_iterator<float>(ss, " "));
+	string s = ss.str();
+	s = s.substr(0, s.length()-1);  // get rid of the trailing space
+	return s;
 }

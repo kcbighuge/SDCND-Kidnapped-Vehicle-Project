@@ -96,20 +96,21 @@ void ParticleFilter::dataAssociation(std::vector<LandmarkObs> predicted, std::ve
 	for (int i=0; i<observations.size(); ++i) {
 
 		double closest_dist = 50;
-		int association = 0;
+		int association = 1;
 
-		for (int j=0; i<predicted.size(); ++i) {
-			double calc_dist = sqrt( pow(observations[i].x - predicted[j].x, 2) + pow(observations[i].y - predicted[j].y, 2) );
+		for (int j=0; j<predicted.size(); ++j) {
+			//double calc_dist = sqrt( pow(observations[i].x - predicted[j].x, 2) + pow(observations[i].y - predicted[j].y, 2) );
+			double calc_dist = dist(observations[i].x, observations[i].y, predicted[j].x, predicted[j].y);
 
 			// check if closer than closest distance
 			if (calc_dist < closest_dist) {
 				closest_dist = calc_dist;
-				association = j;
+				association = predicted[j].id;  // assign closest landmark
 			}
 
 		}  // end loop thru predicted measurements j
 
-		observations[i].id = association; // assign closest landmark
+		observations[i].id = association;
 
 	}  // end loop thru observed measurements i
 
@@ -127,6 +128,18 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 	//   and the following is a good resource for the actual equation to implement (look at equation 
 	//   3.33
 	//   http://planning.cs.uiuc.edu/node99.html
+
+	// convert landmarks to predictions
+	vector<LandmarkObs> predictions;
+
+	for (int k=0; k < map_landmarks.landmark_list.size(); ++k) {
+		LandmarkObs landmark;
+		landmark.x = map_landmarks.landmark_list[k].x_f;
+		landmark.y = map_landmarks.landmark_list[k].y_f;
+		landmark.id = map_landmarks.landmark_list[k].id_i;
+
+		predictions.push_back(landmark);
+	}
 
 	for (int p=0; p<num_particles; ++p) {
 
@@ -149,23 +162,6 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 
 		particles[p].weight = 1.0;
 
-		// find closest landmarks to particle and add to predictions
-		vector<LandmarkObs> predictions;
-
-		for (int k=0; k < map_landmarks.landmark_list.size(); ++k) {
-			LandmarkObs landmark;
-			landmark.x = map_landmarks.landmark_list[k].x_f;
-			landmark.y = map_landmarks.landmark_list[k].y_f;
-			landmark.id = map_landmarks.landmark_list[k].id_i;
-      
-      double dist = sqrt( pow(particles[p].x - landmark.x, 2) + pow(particles[p].y - landmark.y, 2) );
-
-      if (dist < sensor_range) {
-        predictions.push_back(landmark);
-      }
-
-		}
-
 		// find closest landmarks from the map
 		dataAssociation(predictions, trans_observations);
 
@@ -174,12 +170,12 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 
 			int association = trans_observations[i].id;
 
-			if (association !=0) {
+			if (association != 0) {
 				double meas_x = trans_observations[i].x;
 				double meas_y = trans_observations[i].y;
 
-				double mu_x = map_landmarks.landmark_list[association].x_f;
-				double mu_y = map_landmarks.landmark_list[association].y_f;
+				double mu_x = map_landmarks.landmark_list[association-1].x_f;
+				double mu_y = map_landmarks.landmark_list[association-1].y_f;
 
 				double a = pow(meas_x-mu_x, 2) / (2 * pow(std_landmark[0], 2));
 				double b = pow(meas_y-mu_y, 2) / (2 * pow(std_landmark[1], 2));
@@ -190,7 +186,7 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 				}
 			}
 
-			associations.push_back(association+1);
+			associations.push_back(association);
 			sense_x.push_back(trans_observations[i].x);
 			sense_y.push_back(trans_observations[i].y);
 

@@ -25,7 +25,7 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
 	// Add random Gaussian noise to each particle.
 	// NOTE: Consult particle_filter.h for more information about this method (and others in this file).
 
-	num_particles = 80;
+	num_particles = 42;
 
 	default_random_engine gen;
 
@@ -129,18 +129,6 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 	//   3.33
 	//   http://planning.cs.uiuc.edu/node99.html
 
-	// convert landmarks to predictions
-	vector<LandmarkObs> predictions;
-
-	for (int k=0; k < map_landmarks.landmark_list.size(); ++k) {
-		LandmarkObs landmark;
-		landmark.x = map_landmarks.landmark_list[k].x_f;
-		landmark.y = map_landmarks.landmark_list[k].y_f;
-		landmark.id = map_landmarks.landmark_list[k].id_i;
-
-		predictions.push_back(landmark);
-	}
-
 	for (int p=0; p<num_particles; ++p) {
 
 		vector<int> associations;
@@ -162,6 +150,21 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 
 		particles[p].weight = 1.0;
 
+		// convert landmarks to predictions if within sensor range
+		vector<LandmarkObs> predictions;
+
+		for (int k=0; k < map_landmarks.landmark_list.size(); ++k) {
+			LandmarkObs landmark;
+			landmark.x = map_landmarks.landmark_list[k].x_f;
+			landmark.y = map_landmarks.landmark_list[k].y_f;
+			landmark.id = map_landmarks.landmark_list[k].id_i;
+
+			double calc_dist = dist(particles[p].x, particles[p].y, landmark.x, landmark.y);
+			if (calc_dist < sensor_range) {
+				predictions.push_back(landmark);
+			}
+		}
+
 		// find closest landmarks from the map
 		dataAssociation(predictions, trans_observations);
 
@@ -169,6 +172,7 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 		for (int i=0; i<trans_observations.size(); ++i) {
 
 			int association = trans_observations[i].id;
+			//cout << "association: " << association << endl;
 
 			if (association != 0) {
 				double meas_x = trans_observations[i].x;
@@ -179,8 +183,9 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 
 				double a = pow(meas_x-mu_x, 2) / (2 * pow(std_landmark[0], 2));
 				double b = pow(meas_y-mu_y, 2) / (2 * pow(std_landmark[1], 2));
-				long long multiplier = 1 / (2*M_PI * std_landmark[0]*std_landmark[1]) * exp(-(a+b));
+				double multiplier = (1 / (2*M_PI * std_landmark[0]*std_landmark[1])) * exp(-(a+b));
 
+				//cout << "multiplier: " << multiplier << endl;
 				if (multiplier>0) {
 					particles[p].weight *= multiplier;
 				}
